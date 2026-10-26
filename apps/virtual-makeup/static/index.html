@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Virtual makeup</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Virtual makeup</h1>
+      <p class="lede">Lipstick, blush, and eyeshadow from face landmarks. One photo, on this machine.</p>
+    </header>
+    <section class="stage" aria-label="Before and after">
+      <figure>
+        <figcaption>Before</figcaption>
+        <div class="frame">
+          <img id="before" alt="Original face photo">
+        </div>
+      </figure>
+      <figure>
+        <figcaption>After</figcaption>
+        <div class="frame" id="after-frame">
+          <p id="after-empty">Apply makeup to see it here.</p>
+          <img id="after" alt="Face with virtual makeup" hidden>
+        </div>
+      </figure>
+    </section>
+    <aside>
+      <form id="look">
+        <label class="file">
+          <span>Face photo</span>
+          <input id="photo" type="file" accept="image/*">
+        </label>
+        <div class="button-row">
+          <button type="button" id="sample">Use sample</button>
+          <button type="button" id="camera">Start camera</button>
+        </div>
+        <video id="preview" autoplay playsinline muted hidden></video>
+        <div class="button-row" id="camera-actions" hidden>
+          <button type="button" id="capture">Use this frame</button>
+          <label class="check"><input id="live" type="checkbox"> Live</label>
+        </div>
+        <h2>Colour and intensity</h2>
+        <label class="row">
+          <span>Lipstick</span>
+          <input id="lipstick-color" type="color" value="#c81d3a" aria-label="Lipstick colour">
+          <input id="lipstick-intensity" type="range" min="0" max="100" value="78" aria-label="Lipstick intensity">
+          <output id="lipstick-out" for="lipstick-intensity">78%</output>
+        </label>
+        <label class="row">
+          <span>Blush</span>
+          <input id="blush-color" type="color" value="#f07a90" aria-label="Blush colour">
+          <input id="blush-intensity" type="range" min="0" max="100" value="72" aria-label="Blush intensity">
+          <output id="blush-out" for="blush-intensity">72%</output>
+        </label>
+        <label class="row">
+          <span>Eyeshadow</span>
+          <input id="eyeshadow-color" type="color" value="#7a4e86" aria-label="Eyeshadow colour">
+          <input id="eyeshadow-intensity" type="range" min="0" max="100" value="70" aria-label="Eyeshadow intensity">
+          <output id="eyeshadow-out" for="eyeshadow-intensity">70%</output>
+        </label>
+        <div class="presets">
+          <button type="button" data-preset="classic">Classic red</button>
+          <button type="button" data-preset="berry">Berry</button>
+          <button type="button" data-preset="rose">Rose</button>
+        </div>
+        <button class="primary" type="submit" id="apply">Apply makeup</button>
+        <p id="status" role="status"></p>
+        <p class="hint">Sample portrait by Marko Milivojevic, CC0. Webcam frames stay in this browser until you apply them.</p>
+      </form>
+    </aside>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
