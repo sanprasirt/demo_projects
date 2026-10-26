@@ -30,3 +30,5 @@ Tests cover landmark masks and the colour blend, not the web page.
 The sample portrait loads on its own. Upload another front-facing photo, or start the camera and capture a frame. Pick a colour and an intensity for lipstick, blush, and eyeshadow, then apply. Live re-applies the current look to new camera frames.
 
 The sample is a cropped CC0 portrait. See `samples/SOURCE.md`.
+
+`docs/makeup-before-after.png` and `docs/makeup-before-after.mp4` show the page applying makeup, then switching to the berry preset.

@@ -76,7 +76,7 @@ def look_from_hex(
 ) -> MakeupLook:
     return MakeupLook(
         lipstick=RegionStyle(parse_hex_color(lipstick_color), lipstick_intensity, lightness=0.40),
-        blush=RegionStyle(parse_hex_color(blush_color), blush_intensity, lightness=0.22),
+        blush=RegionStyle(parse_hex_color(blush_color), blush_intensity, lightness=0.10),
         eyeshadow=RegionStyle(parse_hex_color(eyeshadow_color), eyeshadow_intensity, lightness=0.28),
     )
 

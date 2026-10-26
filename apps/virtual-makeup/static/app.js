@@ -1,7 +1,7 @@
 const PRESETS = {
   classic: {
     lipstick: ["#c81d3a", 78],
-    blush: ["#f07a90", 72],
+    blush: ["#f07a90", 55],
     eyeshadow: ["#7a4e86", 70],
   },
   berry: {

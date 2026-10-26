@@ -151,15 +151,19 @@ def cheek_centers(points: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
 
 def blush_mask(points: np.ndarray, width: int, height: int, feather_px: int) -> np.ndarray:
     pts = _points(points)
-    mask = np.zeros((height, width), dtype=np.uint8)
-    eye_dist = float(np.linalg.norm(pts[SUBJECT_RIGHT_EYE_OUTER] - pts[SUBJECT_LEFT_EYE_OUTER]))
-    axis_x = max(6, int(round(eye_dist * 0.26)))
-    axis_y = max(5, int(round(eye_dist * 0.17)))
+    eye_dist = max(float(np.linalg.norm(pts[SUBJECT_RIGHT_EYE_OUTER] - pts[SUBJECT_LEFT_EYE_OUTER])), 16.0)
+    # A gaussian has no flat core, so the cheek fades out instead of reading as a disc.
+    sigma_x = max(eye_dist * 0.18, float(feather_px) * 0.85, 8.0)
+    sigma_y = max(eye_dist * 0.12, float(feather_px) * 0.55, 6.0)
+    yy, xx = np.ogrid[:height, :width]
+    field = np.zeros((height, width), dtype=np.float32)
     for center in cheek_centers(pts):
-        cx = int(np.clip(round(float(center[0])), 0, width - 1))
-        cy = int(np.clip(round(float(center[1])), 0, height - 1))
-        cv2.ellipse(mask, (cx, cy), (axis_x, axis_y), 0, 0, 360, 255, thickness=-1)
-    soft = feather(mask, max(feather_px, int(eye_dist * 0.12)))
+        cx = float(center[0])
+        cy = float(center[1])
+        falloff = np.exp(-(((xx - cx) ** 2) / (2 * sigma_x**2) + ((yy - cy) ** 2) / (2 * sigma_y**2)))
+        field = np.maximum(field, falloff)
+    soft = np.clip(field * 255.0, 0, 255).astype(np.uint8)
+    soft[soft < 12] = 0
     lips = fill_polygon(height, width, _poly(pts, LIP_OUTER))
     lips = cv2.dilate(lips, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)), iterations=1)
     soft[lips > 0] = 0

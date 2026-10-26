@@ -42,6 +42,11 @@ def index():
     return FileResponse(STATIC / "index.html")
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return Response(status_code=204)
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True}
@@ -67,7 +72,7 @@ async def apply_makeup(
     lipstick_color: str = Form("#c81d3a"),
     lipstick_intensity: float = Form(0.78),
     blush_color: str = Form("#f07a90"),
-    blush_intensity: float = Form(0.72),
+    blush_intensity: float = Form(0.55),
     eyeshadow_color: str = Form("#7a4e86"),
     eyeshadow_intensity: float = Form(0.70),
 ):
