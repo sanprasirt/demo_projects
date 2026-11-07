@@ -1,0 +1,26 @@
+[project]
+name = "image-alignment"
+version = "0.1.0"
+description = "Align a photo of a planar scene to a reference image with OpenCV."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "gradio>=5.0",
+  "numpy>=2.0",
+  "opencv-python>=4.10,<5",
+]
+
+[project.scripts]
+align = "image_alignment.cli:main"
+playground = "image_alignment.app:main"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
