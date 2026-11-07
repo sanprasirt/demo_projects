@@ -39,7 +39,7 @@ Out:
 ## Stack
 
 - uv: the owner asked for `uv sync` and `uv run`, with a pinned Python 3.12.
-- `opencv-python`: ORB, SIFT, and AKAZE, plus `findHomography`, USAC, `warpPerspective`, and ECC. Confirmed against the installed wheel, not assumed from the OpenCV.js build.
+- `opencv-python` 4.14 (pinned below 5): ORB, SIFT, and AKAZE, plus `findHomography`, USAC, `warpPerspective`, and ECC. The 5.0 wheel does not export AKAZE. Confirmed against the installed package.
 - NumPy: image arrays and the homography checks.
 - Gradio: one local page with uploads, drag-drop, sliders, and image panes. A second frontend stack is unnecessary.
 - pytest: the ratio test, the homography check, and the sample alignment. No UI snapshots.
