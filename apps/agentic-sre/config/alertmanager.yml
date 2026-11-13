@@ -1,0 +1,13 @@
+global:
+  resolve_timeout: 1m
+route:
+  receiver: agent
+  group_by: ["alertname", "service"]
+  group_wait: 1s
+  group_interval: 30s
+  repeat_interval: 2h
+receivers:
+  - name: agent
+    webhook_configs:
+      - url: http://agent:8080/api/alerts
+        send_resolved: true

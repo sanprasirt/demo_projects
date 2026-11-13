@@ -1,0 +1,199 @@
+# Day-2 SRE demo.
+# Mock LLM and mock GitLab:  docker compose --profile mock up --build
+# GitLab CE (about 4GB RAM):   docker compose --profile gitlab up -d gitlab
+# vLLM on a GPU:               set LLM_BASE_URL=http://vllm:8000/v1 and --profile gpu
+# Do not bind mock-llm and vllm, or mock-gitlab and gitlab, to the same host port.
+
+services:
+  lgtm:
+    image: grafana/otel-lgtm:latest
+    ports:
+      - "3000:3000"
+      - "4317:4317"
+      - "4318:4318"
+      - "9090:9090"
+      - "3100:3100"
+      - "3200:3200"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_USERS_DEFAULT_THEME: dark
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /otel-lgtm/grafana/conf/provisioning/dashboards/custom/day2.json
+    volumes:
+      - ./config/prometheus.yaml:/otel-lgtm/prometheus.yaml:ro
+      - ./config/alerts.yml:/otel-lgtm/alerts.yml:ro
+      - ./config/grafana/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/day2.yaml:ro
+      - ./config/grafana/day2.json:/otel-lgtm/grafana/conf/provisioning/dashboards/custom/day2.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/3000'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+
+  gateway:
+    build: .
+    command: ["uv", "run", "--no-dev", "gateway"]
+    environment: &shop
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://lgtm:4317
+      OTEL_EXPORTER_OTLP_PROTOCOL: grpc
+      OTEL_SERVICE_NAME: gateway
+      LOKI_URL: http://lgtm:3100
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-demo-admin}
+      CATALOG_URL: http://catalog:8000
+      CHECKOUT_URL: http://checkout:8000
+      ENABLE_TELEMETRY: "1"
+    ports:
+      - "8001:8000"
+    depends_on:
+      catalog:
+        condition: service_started
+      checkout:
+        condition: service_started
+
+  catalog:
+    build: .
+    command: ["uv", "run", "--no-dev", "catalog"]
+    environment:
+      <<: *shop
+      OTEL_SERVICE_NAME: catalog
+    ports:
+      - "8002:8000"
+
+  checkout:
+    build: .
+    command: ["uv", "run", "--no-dev", "checkout"]
+    environment:
+      <<: *shop
+      OTEL_SERVICE_NAME: checkout
+    ports:
+      - "8003:8000"
+
+  loadgen:
+    build: .
+    command: ["uv", "run", "--no-dev", "loadgen"]
+    environment:
+      GATEWAY_URL: http://gateway:8000
+      LOAD_INTERVAL_S: "0.2"
+    depends_on:
+      - gateway
+
+  mock-teams:
+    build: .
+    command: ["uv", "run", "--no-dev", "mock-teams"]
+    ports:
+      - "8090:8090"
+    environment:
+      PORT: "8090"
+
+  mock-llm:
+    profiles: ["mock"]
+    build: .
+    command: ["uv", "run", "--no-dev", "mock-llm"]
+    ports:
+      - "8000:8000"
+
+  mock-gitlab:
+    profiles: ["mock"]
+    build: .
+    command: ["uv", "run", "--no-dev", "mock-gitlab"]
+    environment:
+      PORT: "8929"
+      GITLAB_PUBLIC_URL: ${GITLAB_PUBLIC_URL:-http://localhost:8929}
+      GITLAB_READ_TOKEN: ${GITLAB_READ_TOKEN:-glpat-read-demo}
+      GITLAB_WRITE_TOKEN: ${GITLAB_WRITE_TOKEN:-glpat-write-demo}
+      GITLAB_WEBHOOK_URL: http://agent:8080/api/gitlab/webhook
+      GITLAB_WEBHOOK_TOKEN: ${GITLAB_WEBHOOK_TOKEN:-demo-webhook}
+    ports:
+      - "8929:8929"
+
+  agent:
+    build: .
+    command: ["uv", "run", "--no-dev", "agent"]
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://mock-llm:8000/v1}
+      LLM_MODEL: ${LLM_MODEL:-mock-sre}
+      LLM_API_KEY: ${LLM_API_KEY:-dummy}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-dummy}
+      PROMETHEUS_URL: http://lgtm:9090
+      LOKI_URL: http://lgtm:3100
+      TEMPO_URL: http://lgtm:3200
+      GITLAB_URL: ${GITLAB_URL:-http://mock-gitlab:8929}
+      GITLAB_PUBLIC_URL: ${GITLAB_PUBLIC_URL:-http://localhost:8929}
+      GITLAB_PROJECT_ID: ${GITLAB_PROJECT_ID:-1}
+      GITLAB_PROJECT_PATH: ${GITLAB_PROJECT_PATH:-shop/day2-demo}
+      GITLAB_READ_TOKEN: ${GITLAB_READ_TOKEN:-glpat-read-demo}
+      GITLAB_WRITE_TOKEN: ${GITLAB_WRITE_TOKEN:-glpat-write-demo}
+      GITLAB_WEBHOOK_TOKEN: ${GITLAB_WEBHOOK_TOKEN:-demo-webhook}
+      TEAMS_WEBHOOK_URL: ${TEAMS_WEBHOOK_URL:-http://mock-teams:8090/webhook}
+      AGENT_PUBLIC_URL: ${AGENT_PUBLIC_URL:-http://localhost:8080}
+      GRAFANA_PUBLIC_URL: ${GRAFANA_PUBLIC_URL:-http://localhost:3000}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-demo-admin}
+      CATALOG_ADMIN_URL: http://catalog:8000/admin/failmode
+      CHECKOUT_ADMIN_URL: http://checkout:8000/admin/failmode
+      GATEWAY_ADMIN_URL: http://gateway:8000/admin/failmode
+      CATALOG_PROBE_URL: http://catalog:8000/products
+      CHECKOUT_PROBE_URL: http://checkout:8000/health
+      ENABLE_NEMO: ${ENABLE_NEMO:-1}
+      NO_PROXY: localhost,127.0.0.1,mock-llm,mock-gitlab,mock-teams,lgtm,catalog,gateway,checkout,alertmanager,agent
+      no_proxy: localhost,127.0.0.1,mock-llm,mock-gitlab,mock-teams,lgtm,catalog,gateway,checkout,alertmanager,agent
+    depends_on:
+      lgtm:
+        condition: service_healthy
+      alertmanager:
+        condition: service_started
+      mock-teams:
+        condition: service_started
+
+  gitlab:
+    profiles: ["gitlab"]
+    image: gitlab/gitlab-ce:17.11.1-ce.0
+    hostname: gitlab
+    shm_size: "256m"
+    mem_limit: 5g
+    environment:
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://gitlab:8929'
+        gitlab_rails['gitlab_shell_ssh_port'] = 2222
+        prometheus_monitoring['enable'] = false
+        puma['worker_processes'] = 0
+        sidekiq['max_concurrency'] = 5
+        postgresql['shared_buffers'] = "256MB"
+    ports:
+      - "8929:8929"
+      - "2222:22"
+
+  vllm:
+    profiles: ["gpu"]
+    image: vllm/vllm-openai:latest
+    ipc: host
+    shm_size: "8gb"
+    ports:
+      - "8000:8000"
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+    command: >
+      --model ${VLLM_MODEL:-Qwen/Qwen3-14B-AWQ}
+      --quantization awq
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+      --max-model-len 8192
+      --gpu-memory-utilization 0.90
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

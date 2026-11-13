@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Teams · SRE incidents</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; font-family: "Segoe UI", sans-serif; background: #1f1f1f; color: #f3f2f1; display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    nav { background: #2b2b30; padding: 20px 16px; }
+    nav h1 { font-size: 16px; margin: 0 0 16px; }
+    nav .chan { background: #3b3b42; border-radius: 6px; padding: 8px 10px; }
+    main { padding: 24px 28px 48px; max-width: 820px; }
+    .msg { background: #292929; border-radius: 8px; padding: 14px 16px; margin: 0 0 14px; border: 1px solid #3a3a3a; }
+    .who { color: #b4a0ff; font-weight: 700; margin-bottom: 8px; }
+    .card { background: #fff; color: #242424; border-radius: 8px; padding: 14px; }
+    .card h2 { margin: 0 0 8px; font-size: 18px; color: #c4314b; }
+    .card h3 { margin: 12px 0 4px; font-size: 14px; }
+    .card p, .card pre { margin: 4px 0; white-space: pre-wrap; font-size: 14px; }
+    .card pre { font-family: ui-monospace, monospace; background: #f6f6f6; padding: 8px; border-radius: 6px; }
+    .card a.btn { display: inline-block; margin: 8px 8px 0 0; background: #5b5fc7; color: white; text-decoration: none; padding: 8px 12px; border-radius: 4px; font-weight: 700; }
+    .time { color: #adadad; font-size: 12px; margin-bottom: 6px; }
+  </style>
+</head>
+<body>
+  <nav>
+    <h1>SRE workspace</h1>
+    <div class="chan"># incidents</div>
+    <p style="color:#c8c6c4;font-size:13px">Mock Workflows webhook. A real URL is TEAMS_WEBHOOK_URL.</p>
+  </nav>
+  <main>
+    <h2 style="margin-top:0">Incoming webhook</h2>
+    <div id="feed"></div>
+  </main>
+  <script>
+    const feed = document.querySelector("#feed");
+    function blockText(block) {
+      return block.text || "";
+    }
+    function render(messages) {
+      feed.replaceChildren();
+      if (!messages.length) {
+        feed.textContent = "No cards yet. The agent posts one when a write needs approval.";
+        return;
+      }
+      for (const message of messages) {
+        const wrap = document.createElement("article");
+        wrap.className = "msg";
+        const time = document.createElement("div");
+        time.className = "time";
+        time.textContent = message.received_at || "";
+        const who = document.createElement("div");
+        who.className = "who";
+        who.textContent = "Day-2 agent";
+        wrap.append(time, who);
+        const payload = message.payload || {};
+        const attachments = payload.attachments || [];
+        if (!attachments.length) {
+          wrap.append(document.createTextNode(JSON.stringify(payload)));
+        }
+        for (const attachment of attachments) {
+          const content = attachment.content || {};
+          const card = document.createElement("div");
+          card.className = "card";
+          for (const block of content.body || []) {
+            const text = blockText(block);
+            if (!text) continue;
+            const node = block.weight === "Bolder" ? document.createElement("h3") : document.createElement("p");
+            if (block.fontType === "Monospace") {
+              const pre = document.createElement("pre");
+              pre.textContent = text;
+              card.append(pre);
+            } else {
+              node.textContent = text;
+              card.append(node);
+            }
+          }
+          for (const action of content.actions || []) {
+            const link = document.createElement("a");
+            link.className = "btn";
+            link.href = action.url || "#";
+            link.target = "_blank";
+            link.rel = "noreferrer";
+            link.textContent = action.title || action.type;
+            card.append(link);
+          }
+          wrap.append(card);
+        }
+        feed.append(wrap);
+      }
+    }
+    async function tick() {
+      const body = await fetch("/api/messages").then((response) => response.json());
+      render(body.messages || []);
+    }
+    tick();
+    setInterval(tick, 2000);
+  </script>
+</body>
+</html>

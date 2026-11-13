@@ -1,0 +1,35 @@
+groups:
+  - name: day2
+    rules:
+      - alert: CatalogHighErrorRate
+        expr: sum(rate(demo_http_requests_total{service="catalog",status=~"5.."}[1m])) > 0.5
+        for: 15s
+        labels:
+          severity: critical
+          scenario: bad-deploy
+          service: catalog
+        annotations:
+          summary: Catalog 5xx rate is high after deploy
+          description: Catalog is returning 5xx. Compare with the latest production deployment.
+      - alert: ServiceMemoryHigh
+        expr: max by (service) (demo_memory_bytes) > 50000000
+        for: 15s
+        labels:
+          severity: warning
+          scenario: memory-leak
+        annotations:
+          summary: Injected memory leak is above 50MB
+          description: demo_memory_bytes crossed 50MB. Leak mode is still on.
+      - alert: DependencyLatencyHigh
+        expr: |
+          sum by (service, dependency) (rate(demo_dependency_latency_seconds_sum[1m]))
+          /
+          sum by (service, dependency) (rate(demo_dependency_latency_seconds_count[1m]))
+          > 0.8
+        for: 15s
+        labels:
+          severity: warning
+          scenario: dependency-latency
+        annotations:
+          summary: Dependency latency is above 0.8s
+          description: A shop dependency is slower than the runbook threshold.

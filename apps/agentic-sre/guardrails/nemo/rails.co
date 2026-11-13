@@ -1,0 +1,11 @@
+define bot refuse to respond
+  "BLOCKED_BY_RAIL"
+
+define flow mask sensitive data
+  $user_message = execute mask_sensitive_text(user_message=$user_message)
+
+define flow execution rail
+  $allowed = execute execution_guard(tool_name=$tool_name, approved=$approved)
+  if not $allowed
+    bot refuse to respond
+    stop
