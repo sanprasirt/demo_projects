@@ -1,0 +1,9 @@
+default: deny
+tools:
+  promql_query: read
+  logql_query: read
+  traceql_query: read
+  gitlab_read: read
+  get_runbook: read
+  gitlab_open_revert_mr: write
+  set_failmode: write

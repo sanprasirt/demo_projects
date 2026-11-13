@@ -1,0 +1,29 @@
+id: dependency-latency
+title: Clear checkout dependency latency
+match:
+  alertnames:
+    - DependencyLatencyHigh
+  keywords:
+    - latency
+    - orders-db
+    - slow
+markdown: |
+  ## Checkout dependency latency
+
+  The orders-db call inside checkout is slower than 0.8s. Confirm the latency query and the slow log line. Turn latency mode off after approval, then verify the average falls.
+steps:
+  - id: clear-latency
+    title: Turn checkout latency mode off
+    action: set_failmode
+    approval_required: true
+    params:
+      service: checkout
+      mode: "off"
+  - id: verify-latency
+    title: Confirm orders-db latency fell
+    action: verify
+    approval_required: false
+    params:
+      query: sum(rate(demo_dependency_latency_seconds_sum{service="checkout",dependency="orders-db"}[1m])) / sum(rate(demo_dependency_latency_seconds_count{service="checkout",dependency="orders-db"}[1m]))
+      below: 0.8
+      probe_service: checkout

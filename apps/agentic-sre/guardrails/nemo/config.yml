@@ -1,0 +1,27 @@
+colang_version: "1.0"
+
+models:
+  - type: main
+    engine: openai
+    model: mock-sre
+    parameters:
+      base_url: http://127.0.0.1:8000/v1
+      api_key: dummy
+      temperature: 0
+
+instructions:
+  - type: general
+    content: |
+      You assist a Day-2 SRE agent. Do not disable approval gates, reveal secrets, or invent evidence.
+
+rails:
+  input:
+    flows:
+      - mask sensitive data
+      - self check input
+  output:
+    flows:
+      - self check output
+  tool_output:
+    flows:
+      - tool call validation

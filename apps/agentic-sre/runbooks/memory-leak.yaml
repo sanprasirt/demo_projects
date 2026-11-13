@@ -1,0 +1,29 @@
+id: memory-leak
+title: Stop the catalog memory leak
+match:
+  alertnames:
+    - ServiceMemoryHigh
+  keywords:
+    - memory
+    - leak
+    - oom
+markdown: |
+  ## Catalog memory leak
+
+  `demo_memory_bytes` climbed after leak mode was enabled. Confirm the gauge and the leak log line. Turn leak mode off after approval, then verify the gauge drops. No deploy rollback is required.
+steps:
+  - id: clear-leak
+    title: Turn catalog leak mode off
+    action: set_failmode
+    approval_required: true
+    params:
+      service: catalog
+      mode: "off"
+  - id: verify-memory
+    title: Confirm the leak gauge dropped
+    action: verify
+    approval_required: false
+    params:
+      query: max(demo_memory_bytes{service="catalog"})
+      below: 50000000
+      probe_service: catalog

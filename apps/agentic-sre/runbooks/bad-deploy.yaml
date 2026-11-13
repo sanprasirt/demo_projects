@@ -1,0 +1,41 @@
+id: bad-deploy
+title: Roll back the bad catalog deploy
+match:
+  alertnames:
+    - CatalogHighErrorRate
+  keywords:
+    - catalog
+    - 5xx
+    - NullPrice
+    - bad deploy
+markdown: |
+  ## Bad catalog deploy
+
+  Catalog is returning 500s after tag `catalog-v1.4.2`. Confirm the error rate, the error log, and the production deployment SHA. The bad commit landed on main without a review merge request.
+
+  Open a revert merge request, then turn off the injected fault. Verify the 5xx rate falls. Both writes require approval.
+steps:
+  - id: open-revert-mr
+    title: Open a revert merge request for catalog v1.4.2
+    action: gitlab_open_revert_mr
+    approval_required: true
+    params:
+      sha: badc0ffee1a2b3c4d5e6f708192a3b4c5d6e7f80
+      ref: catalog-v1.4.2
+      source_branch: revert-catalog-v1.4.2
+      target_branch: main
+  - id: clear-failmode
+    title: Turn catalog fail mode off
+    action: set_failmode
+    approval_required: true
+    params:
+      service: catalog
+      mode: "off"
+  - id: verify-recovery
+    title: Confirm the catalog 5xx rate has dropped
+    action: verify
+    approval_required: false
+    params:
+      query: sum(rate(demo_http_requests_total{service="catalog",status=~"5.."}[30s]))
+      below: 0.5
+      probe_service: catalog
