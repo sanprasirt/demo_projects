@@ -124,6 +124,8 @@ services:
       <<: *shop
       OTEL_SERVICE_NAME: checkout
       DATABASE_URL: postgresql://shop_app:shop_app@postgres:5432/shop
+      SLOW_PASSES: ${SLOW_PASSES:-30}
+      FAIL_LATENCY_SERIES: ${FAIL_LATENCY_SERIES:-2500000}
     ports:
       - "8003:8000"
     depends_on:

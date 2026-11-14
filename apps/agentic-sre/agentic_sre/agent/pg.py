@@ -43,11 +43,22 @@ def format_activity(rows: list[dict]) -> dict:
     unique = sorted(set(blocking))
     ranked = sorted(
         masked,
-        key=lambda item: (not item["blocking_pids"], item["wait_event_type"] != "Lock", item["state"] != "active"),
+        key=lambda item: (
+            not str(item["application_name"]).startswith("sre-"),
+            not item["blocking_pids"],
+            item["wait_event_type"] != "Lock",
+            item["state"] != "active",
+        ),
     )
     lines = []
     for item in ranked[:6]:
-        if not (item["blocking_pids"] or item["wait_event_type"] or item["state"] in {"active", "idle in transaction"}):
+        interesting = (
+            item["blocking_pids"]
+            or item["wait_event_type"]
+            or item["state"] in {"active", "idle in transaction"}
+            or str(item["application_name"]).startswith("sre-")
+        )
+        if not interesting:
             continue
         lines.append(
             f"pid={item['pid']} app={item['application_name'] or '-'} state={item['state'] or '-'} "

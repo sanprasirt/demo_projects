@@ -34,19 +34,23 @@ LOCK_SKU = "locked-sku"
 
 
 def slow_passes() -> int:
-    raw = os.environ.get("SLOW_PASSES", "4")
+    # 30 passes over the mug slice is a few hundred milliseconds: above the
+    # 80ms alert and the recovery check, and still under the 0.8s latency alert.
+    raw = os.environ.get("SLOW_PASSES", "30")
     try:
         return max(1, int(raw))
     except ValueError:
-        return 4
+        return 30
 
 
 def latency_series() -> int:
-    raw = os.environ.get("FAIL_LATENCY_SERIES", "2000000")
+    # 2.5e6 md5 probes land around 1.8s on this demo: over the 0.8s alert and
+    # the 1.5s slow log, and under the checkout statement timeout.
+    raw = os.environ.get("FAIL_LATENCY_SERIES", "2500000")
     try:
         return max(1, int(raw))
     except ValueError:
-        return 2_000_000
+        return 2_500_000
 
 
 class Database:
@@ -165,6 +169,8 @@ class Database:
         with self._direct(application_name=f"{self.application_name}-ddl", autocommit=True) as conn:
             conn.execute("SET lock_timeout = '15s'")
             conn.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX_NAME}")
+            # Historical fast plans would keep the mean under the alert.
+            _reset_statements(conn)
         log.warning("dropped %s", INDEX_NAME)
         return {"ok": True, "index": INDEX_NAME, "present": self.index_present()}
 

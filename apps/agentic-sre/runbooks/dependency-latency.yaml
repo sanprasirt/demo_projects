@@ -24,6 +24,6 @@ steps:
     action: verify
     approval_required: false
     params:
-      query: sum(rate(demo_dependency_latency_seconds_sum{service="checkout",dependency="orders-db"}[1m])) / sum(rate(demo_dependency_latency_seconds_count{service="checkout",dependency="orders-db"}[1m]))
+      query: sum(rate(demo_dependency_latency_seconds_sum{service="checkout",dependency="orders-db"}[30s])) / sum(rate(demo_dependency_latency_seconds_count{service="checkout",dependency="orders-db"}[30s]))
       below: 0.8
       probe_service: checkout
