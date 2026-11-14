@@ -51,6 +51,30 @@ SCRIPTS = {
         ("gitlab_read", {"what": "pipelines"}),
         ("get_runbook", {"runbook_id": "dependency-latency"}),
     ],
+    "lock-contention": [
+        ("promql_query", {"query": "sum(demo_pg_activity_lock_waits)"}),
+        ("pg_activity", {}),
+        ("pg_top_statements", {"order_by": "mean_exec_time"}),
+        ("logql_query", {"query": '{service="checkout"} |= "lock"'}),
+        ("traceql_query", {"query": '{ resource.service.name = "checkout" && span.db.system = "postgresql" }'}),
+        ("get_runbook", {"runbook_id": "lock-contention"}),
+    ],
+    "connection-saturation": [
+        ("promql_query", {"query": "sum(demo_pg_connections_count) / max(demo_pg_settings_max_connections)"}),
+        ("pg_activity", {}),
+        ("pg_top_statements", {"order_by": "total_exec_time"}),
+        ("logql_query", {"query": '{service="checkout"} |= "connection"'}),
+        ("traceql_query", {"query": '{ resource.service.name = "checkout" }'}),
+        ("get_runbook", {"runbook_id": "connection-saturation"}),
+    ],
+    "slow-query": [
+        ("promql_query", {"query": 'max(demo_db_last_query_seconds{statement="orders_by_sku"})'}),
+        ("pg_top_statements", {"order_by": "mean_exec_time"}),
+        ("pg_activity", {}),
+        ("logql_query", {"query": '{service="checkout"} |= "orders_by_sku"'}),
+        ("traceql_query", {"query": '{ resource.service.name = "checkout" && span.db.system = "postgresql" }'}),
+        ("get_runbook", {"runbook_id": "slow-query"}),
+    ],
 }
 
 HYPOTHESES = {
@@ -64,8 +88,48 @@ HYPOTHESES = {
         "demo_memory_bytes is climbing. This is not a new deploy."
     ),
     "dependency-latency": (
-        "Root cause: checkout's orders-db call is sleeping under fail mode `latency`. "
+        "Root cause: checkout latency mode is running a heavy Postgres scan against orders-db. "
         "Request rate is healthy and there is no bad deploy on this path."
+    ),
+    "lock-contention": (
+        "Root cause: session sre-lock is holding a row lock. "
+        "pg_stat_activity shows the waiter, its wait event, and the blocking pid. "
+        "Terminating that backend releases the lock."
+    ),
+    "connection-saturation": (
+        "Root cause: sre-hold sessions pushed PostgreSQL connections above 75 percent of max_connections "
+        "and the checkout pool is exhausted. Terminating those backends frees the slots."
+    ),
+    "slow-query": (
+        "Root cause: orders_sku_created_idx is missing, so orders_by_sku seq-scans orders. "
+        "CREATE INDEX CONCURRENTLY restores the fast plan."
+    ),
+}
+
+POSTMORTEMS = {
+    "bad-deploy": (
+        "The catalog 5xx tracked the v1.4.2 deploy. "
+        "After approval the revert merge request was opened and fail mode was cleared. "
+        "The error rate fell and the incident can close."
+    ),
+    "lock-contention": (
+        "A checkout session was waiting on a row lock held by sre-lock. "
+        "After approval that backend was terminated, lock waits dropped, and checkout recovered."
+    ),
+    "connection-saturation": (
+        "Too many sre-hold sessions saturated max_connections. "
+        "After approval those backends were terminated and the checkout pool recovered."
+    ),
+    "slow-query": (
+        "orders_by_sku was slow because orders_sku_created_idx was missing. "
+        "After approval the index was created concurrently and statement time fell."
+    ),
+    "dependency-latency": (
+        "Checkout was running a heavy Postgres scan while latency mode was on. "
+        "After approval the mode was cleared and orders-db time fell."
+    ),
+    "memory-leak": (
+        "Catalog leak mode was retaining a buffer. After approval the mode was cleared and the gauge dropped."
     ),
 }
 
@@ -84,6 +148,12 @@ def _text(messages: list) -> str:
 
 
 def _scenario(blob: str) -> str:
+    if "DBLockWaitsHigh" in blob or "DBDeadlocks" in blob or "lock-contention" in blob:
+        return "lock-contention"
+    if "DBConnectionsSaturated" in blob or "connection-saturation" in blob:
+        return "connection-saturation"
+    if "DBSlowQueries" in blob or "slow-query" in blob:
+        return "slow-query"
     if "ServiceMemoryHigh" in blob or "memory-leak" in blob:
         return "memory-leak"
     if "DependencyLatencyHigh" in blob or "dependency-latency" in blob:
@@ -135,14 +205,8 @@ def decide(messages: list, tools: list | None) -> dict:
             "tool_calls": [],
         }
     if phase == "postmortem":
-        return {
-            "content": (
-                "The catalog 5xx tracked the v1.4.2 deploy. "
-                "After approval the revert merge request was opened and fail mode was cleared. "
-                "The error rate fell and the incident can close."
-            ),
-            "tool_calls": [],
-        }
+        scenario = _scenario(blob)
+        return {"content": POSTMORTEMS.get(scenario, POSTMORTEMS["bad-deploy"]), "tool_calls": []}
     if phase == "investigate" and tools:
         scenario = _scenario(blob)
         script = SCRIPTS[scenario]

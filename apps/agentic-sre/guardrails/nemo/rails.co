@@ -5,6 +5,9 @@ define flow mask sensitive data
   $user_message = execute mask_sensitive_text(user_message=$user_message)
 
 define flow execution rail
+  # Read tools include pg_activity and pg_top_statements.
+  # pg_terminate_backend, pg_cancel_query, and pg_create_index are writes.
+  # execution_guard reads guardrails/allowlist.yml and blocks those until approved.
   $allowed = execute execution_guard(tool_name=$tool_name, approved=$approved)
   if not $allowed
     bot refuse to respond

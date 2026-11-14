@@ -1,0 +1,227 @@
+{
+  "uid": "postgres",
+  "title": "PostgreSQL",
+  "tags": ["sre", "demo", "postgres"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "refresh": "5s",
+  "time": {"from": "now-15m", "to": "now"},
+  "links": [
+    {
+      "title": "Day-2 operations",
+      "url": "/d/day2/day-2-operations",
+      "type": "link",
+      "icon": "dashboard",
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Connections by state",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "bars", "stacking": {"mode": "normal"}}}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (datname, state) (demo_pg_connections_count)",
+          "legendFormat": "{{datname}} {{state}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Connections / max_connections",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "orange", "value": 0.6},
+              {"color": "red", "value": 0.75}
+            ]
+          }
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(demo_pg_connections_count) / max(demo_pg_settings_max_connections)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Lock waits",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 0},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {"color": "green", "value": null},
+              {"color": "red", "value": 1}
+            ]
+          }
+        }
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "background"},
+      "targets": [
+        {"refId": "A", "expr": "sum(demo_pg_activity_lock_waits)"}
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Locks",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"refId": "A", "expr": "sum(demo_pg_locks_locks)", "legendFormat": "locks"},
+        {"refId": "B", "expr": "sum(demo_pg_locks_waiting)", "legendFormat": "not granted"}
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Deadlocks",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"refId": "A", "expr": "increase(demo_pg_database_deadlocks[5m])", "legendFormat": "deadlocks / 5m"}
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Cache hit ratio",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(demo_pg_database_blks_hit[5m])) / clamp_min(sum(rate(demo_pg_database_blks_hit[5m])) + sum(rate(demo_pg_database_blks_read[5m])), 1e-9)",
+          "legendFormat": "cache hit"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Transactions",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "targets": [
+        {"refId": "A", "expr": "sum(rate(demo_pg_database_xact_commit[1m]))", "legendFormat": "commits"},
+        {"refId": "B", "expr": "sum(rate(demo_pg_database_xact_rollback[1m]))", "legendFormat": "rollbacks"}
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Tuples",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "ops"}},
+      "targets": [
+        {"refId": "A", "expr": "sum(rate(demo_pg_database_tup_returned[1m]))", "legendFormat": "returned"},
+        {"refId": "B", "expr": "sum(rate(demo_pg_database_tup_fetched[1m]))", "legendFormat": "fetched"},
+        {"refId": "C", "expr": "sum(rate(demo_pg_database_tup_inserted[1m]))", "legendFormat": "inserted"},
+        {"refId": "D", "expr": "sum(rate(demo_pg_database_tup_updated[1m]))", "legendFormat": "updated"},
+        {"refId": "E", "expr": "sum(rate(demo_pg_database_tup_deleted[1m]))", "legendFormat": "deleted"}
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Long-running queries",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 16},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        {"refId": "A", "expr": "max(demo_pg_activity_long_running)", "legendFormat": "queries older than 1s"},
+        {"refId": "B", "expr": "max(demo_pg_activity_max_query_age_seconds)", "legendFormat": "oldest query age (s)"}
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Replication lag",
+      "description": "Zero on this single primary. The series is still scraped so a replica would show up here.",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 24},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "targets": [
+        {"refId": "A", "expr": "max(demo_pg_replication_replay_lag_seconds)", "legendFormat": "replay"},
+        {"refId": "B", "expr": "max(demo_pg_replication_write_lag_seconds)", "legendFormat": "write"},
+        {"refId": "C", "expr": "max(demo_pg_replication_flush_lag_seconds)", "legendFormat": "flush"},
+        {"refId": "D", "expr": "max(demo_pg_replication_replicas)", "legendFormat": "replicas"}
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Statement mean time",
+      "gridPos": {"h": 8, "w": 16, "x": 8, "y": 24},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "topk(8, demo_pg_statements_mean_seconds)",
+          "legendFormat": "{{query}}"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Checkout orders_by_sku",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 32},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(demo_db_last_query_seconds{statement=\"orders_by_sku\"})",
+          "legendFormat": "last duration"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "In recovery",
+      "gridPos": {"h": 8, "w": 6, "x": 12, "y": 32},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {"refId": "A", "expr": "max(demo_pg_replication_in_recovery)"}
+      ]
+    },
+    {
+      "id": 14,
+      "type": "stat",
+      "title": "Active sessions",
+      "gridPos": {"h": 8, "w": 6, "x": 18, "y": 32},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}},
+      "targets": [
+        {"refId": "A", "expr": "sum(demo_pg_activity_active)"}
+      ]
+    }
+  ]
+}

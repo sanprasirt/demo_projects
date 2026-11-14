@@ -15,14 +15,19 @@ flowchart LR
   load[load generator] --> gw[gateway]
   gw --> cat[catalog]
   gw --> chk[checkout]
+  cat --> pg[(PostgreSQL 16)]
+  chk --> pg
+  pg --> exp[postgres_exporter]
   cat -->|OTLP traces and logs| lgtm[Grafana LGTM]
   chk -->|OTLP| lgtm
   gw -->|OTLP| lgtm
-  lgtm -->|scrape demo_*| prom[Prometheus]
+  exp -->|connections locks statements| prom[Prometheus]
+  lgtm -->|scrape demo_*| prom
   prom -->|alert rules| am[Alertmanager]
   am -->|webhook| agent[SRE agent]
   gl[GitLab or mock] -->|deployment webhook| agent
   agent -->|PromQL LogQL TraceQL| lgtm
+  agent -->|pg_activity read / SQL writes after approval| pg
   agent -->|read_api / write after approval| gl
   agent -->|Adaptive Card| teams[Teams or mock]
   teams -->|OpenUrl approve| agent
@@ -41,7 +46,10 @@ The running processes stay up. `/admin/failmode` turns a fault on and off. Scena
 | --- | --- | --- | --- |
 | 1 | Bad catalog deploy, HTTP 500 `NullPrice` | `scripts/scenario1_inject.sh` | `scripts/scenario1_reset.sh` |
 | 2 | Memory leak gauge on catalog | `scripts/scenario2_inject.sh` | `scripts/scenario2_reset.sh` |
-| 3 | Checkout orders-db latency | `scripts/scenario3_inject.sh` | `scripts/scenario3_reset.sh` |
+| 3 | Checkout orders-db latency from a real Postgres scan | `scripts/scenario3_inject.sh` | `scripts/scenario3_reset.sh` |
+| 4 | Row lock held open on `products` | `scripts/scenario4_inject.sh` | `scripts/scenario4_reset.sh` |
+| 5 | Connections above 75% of `max_connections` | `scripts/scenario5_inject.sh` | `scripts/scenario5_reset.sh` |
+| 6 | Slow `orders_by_sku` after dropping its index | `scripts/scenario6_inject.sh` | `scripts/scenario6_reset.sh` |
 
 ### Setup
 
@@ -59,6 +67,8 @@ Then open:
 - Mock Teams channel: http://localhost:8090
 - Mock GitLab project: http://localhost:8929/shop/day2-demo
 - Shop gateway: http://localhost:8001/api/products
+- PostgreSQL dashboard: http://localhost:3000/d/postgres/postgresql
+- Shop database (not GitLab's): `localhost:5432`, database `shop`
 
 `uv run pytest` runs the critical tests on the host. It does not need Docker.
 
@@ -118,7 +128,8 @@ This validation environment did not start GitLab CE. The mock implements the RES
 
 ### Resources
 
-- GitLab CE: plan on 4GB+ RAM and a large image pull.
+- GitLab CE: plan on 4GB+ RAM and a large image pull. Its embedded Postgres is unused in mock mode and is not the shop database.
+- Shop PostgreSQL 16: a few hundred MB, host port 5432, plus a small `postgres_exporter` on 9187. The first start loads 200,000 orders into the `shop-pg` volume. `docker compose down -v` runs the init script again.
 - `grafana/otel-lgtm`: about 1–2GB of RAM once Prometheus, Loki, Tempo, and Grafana are up.
 - The Python services are small. The mock LLM is a few tens of megabytes.
 - vLLM with the 14B AWQ model needs a 24GB GPU and a lot of disk for the weights. It is not started in mock mode.
@@ -135,13 +146,24 @@ This validation environment did not start GitLab CE. The mock implements the RES
 8. Approve clearing fail mode. Catalog returns 200 again. The agent verifies the 5xx rate and posts a postmortem draft to Teams.
 9. Optional: `scripts/scenario1_reset.sh` if you rejected the mitigation. Scenarios 2 and 3 use the other inject scripts.
 
+### Database scenario (about 4 minutes)
+
+Scenario 3 no longer sleeps in Python. Checkout runs a real Postgres statement. Scenarios 4–6 are database faults. This walkthrough is the lock.
+
+1. Open the [PostgreSQL dashboard](http://localhost:3000/d/postgres/postgresql). Connections, lock waits, and `orders_by_sku` should look quiet. The Day-2 dashboard links to the same panels.
+2. Run `scripts/scenario4_inject.sh`. A session named `sre-lock` holds a row lock. Another session waits on it.
+3. Alert `DBLockWaitsHigh` reaches the agent. The UI shows `pg_activity` (waiting query, `Lock` wait event, blocking pid) and `pg_top_statements`. SQL literals in that evidence are masked. The write was blocked until you approve.
+4. Approve **Terminate the backend holding the row lock**. The agent runs `pg_terminate_backend` as `sre_writer`. Lock waits drop and the postmortem draft is posted.
+5. Optional reset: `scripts/scenario4_reset.sh`.
+6. Slow query: `scripts/scenario6_inject.sh` drops `orders_sku_created_idx`. Alert `DBSlowQueries` asks you to approve `CREATE INDEX CONCURRENTLY`. `scripts/scenario6_reset.sh` rebuilds the index if you reject it. Scenario 5 fills connections with `sre-hold` until the server is past 75% of `max_connections`; the approved step terminates those backends.
+
 ### Tests
 
 ```bash
 uv run pytest
 ```
 
-Covers runbook matching, the execution rail blocking unapproved writes, the Teams card shape, the GitLab client against the mock, fail-mode reset, and a full scenario 1 run on the mock LLM.
+Covers runbook matching, the execution rail blocking unapproved writes (including `pg_terminate_backend`, `pg_cancel_query`, and `pg_create_index`), the Teams card shape, the GitLab client against the mock, fail-mode reset, a full scenario 1 run on the mock LLM, and the lock-contention scenario on the mock LLM. `pg_activity` masking is covered without a database. When Docker is available, the same file also runs the tools against a real PostgreSQL 16.
 
 ### Roadmap
 
@@ -157,7 +179,7 @@ Covers runbook matching, the execution rail blocking unapproved writes, the Team
 
 ### สถาปัตยกรรม
 
-แผนภาพ mermaid ในส่วนภาษาอังกฤษคือสถาปัตยกรรมชุดเดียวกัน: load generator → gateway → catalog และ checkout → OTLP เข้า Grafana LGTM → กฎของ Prometheus → Alertmanager → เอเจนต์ เอเจนต์อ่าน PromQL, LogQL, TraceQL และ GitLab และส่งการ์ดไปที่ Teams ปุ่ม Approve / Reject เป็นลิงก์กลับมาที่หน้าอนุมัติของเอเจนต์ NeMo Guardrails ตรวจอินพุต เอาต์พุต และรายการเครื่องมือ โดยชี้ `base_url` ไปที่ vLLM หรือ mock
+แผนภาพ mermaid ในส่วนภาษาอังกฤษคือสถาปัตยกรรมชุดเดียวกัน: load generator → gateway → catalog และ checkout → PostgreSQL 16 (คนละตัวกับฐานของ GitLab) และ postgres_exporter → OTLP เข้า Grafana LGTM → กฎของ Prometheus → Alertmanager → เอเจนต์ เอเจนต์อ่าน PromQL, LogQL, TraceQL, `pg_stat_activity`, `pg_stat_statements` และ GitLab การเขียนฐานข้อมูล (`pg_terminate_backend`, `pg_cancel_query`, `CREATE INDEX CONCURRENTLY`) ต้องมีคนอนุมัติ เอเจนต์ส่งการ์ดไปที่ Teams ปุ่ม Approve / Reject เป็นลิงก์กลับมาที่หน้าอนุมัติ NeMo Guardrails ตรวจอินพุต เอาต์พุต และรายการเครื่องมือ โดยชี้ `base_url` ไปที่ vLLM หรือ mock ตัวอักษรใน SQL ถูกมาสก์ก่อนส่งให้โมเดล
 
 ### เหตุการณ์ที่ซ้อมได้
 
@@ -167,7 +189,10 @@ Covers runbook matching, the execution rail blocking unapproved writes, the Team
 | --- | --- | --- | --- |
 | 1 | deploy เสียของ catalog ตอบ 500 `NullPrice` | `scripts/scenario1_inject.sh` | `scripts/scenario1_reset.sh` |
 | 2 | memory leak ที่ catalog | `scripts/scenario2_inject.sh` | `scripts/scenario2_reset.sh` |
-| 3 | orders-db ของ checkout ช้า | `scripts/scenario3_inject.sh` | `scripts/scenario3_reset.sh` |
+| 3 | orders-db ของ checkout ช้าจากคำสั่ง Postgres จริง | `scripts/scenario3_inject.sh` | `scripts/scenario3_reset.sh` |
+| 4 | ล็อกแถวค้างใน `products` | `scripts/scenario4_inject.sh` | `scripts/scenario4_reset.sh` |
+| 5 | จำนวนคอนเนกชันเกิน 75% ของ `max_connections` | `scripts/scenario5_inject.sh` | `scripts/scenario5_reset.sh` |
+| 6 | `orders_by_sku` ช้าเพราะดัชนีถูกลบ | `scripts/scenario6_inject.sh` | `scripts/scenario6_reset.sh` |
 
 ### การติดตั้ง
 
@@ -204,7 +229,8 @@ NeMo ใช้ engine `openai` และ `base_url` ตาม `LLM_BASE_URL` ร
 
 ### ทรัพยากร
 
-- GitLab CE: เตรียมแรม 4GB ขึ้นไป และพื้นที่สำหรับอิมเมจขนาดใหญ่
+- GitLab CE: เตรียมแรม 4GB ขึ้นไป และพื้นที่สำหรับอิมเมจขนาดใหญ่ ฐานข้อมูลใน GitLab ไม่ใช่ฐานของร้าน
+- PostgreSQL 16 ของร้าน: แรมไม่กี่ร้อย MB พอร์ต 5432 และ postgres_exporter ที่พอร์ต 9187 ครั้งแรกจะโหลดออเดอร์ 200,000 แถวลงวอลุ่ม `shop-pg` ถ้าต้องการโหลดสคีมาใหม่ใช้ `docker compose down -v`
 - `grafana/otel-lgtm`: ประมาณ 1–2GB เมื่อ Prometheus, Loki, Tempo และ Grafana ทำงานพร้อมกัน
 - บริการ Python และ mock LLM ใช้ทรัพยากรน้อย
 - vLLM รุ่น 14B AWQ ต้องการ GPU 24GB โหมด mock ไม่ได้ดึงอิมเมจนี้
@@ -221,13 +247,24 @@ NeMo ใช้ engine `openai` และ `base_url` ตาม `LLM_BASE_URL` ร
 8. เอเจนต์ตรวจว่าอัตรา 5xx ลดลง แล้วส่งร่าง postmortem ไปที่ Teams
 9. ถ้าปฏิเสธการบรรเทา ให้รัน `scripts/scenario1_reset.sh` กรณีที่ 2 และ 3 ใช้สคริปต์ inject คู่ของมัน
 
+### สคริปต์ฐานข้อมูลประมาณ 4 นาที
+
+กรณีที่ 3 ไม่ได้ `sleep` ในโปรเซส Python แล้ว checkout ยิงคำสั่ง Postgres จริง กรณีที่ 4–6 เป็นความผิดของฐานข้อมูล ตัวอย่างด้านล่างคือล็อกแถว
+
+1. เปิดแดชบอร์ด PostgreSQL ที่ http://localhost:3000/d/postgres/postgresql คอนเนกชัน ล็อกที่รอ และเวลาของ `orders_by_sku` ควรสงบ แดชบอร์ด Day-2 ลิงก์มาที่แผงเดียวกัน
+2. รัน `scripts/scenario4_inject.sh` เซสชัน `sre-lock` ถือล็อกแถว และมีอีกเซสชันรออยู่
+3. alert `DBLockWaitsHigh` เข้าเอเจนต์ UI แสดง `pg_activity` (คิวรีที่รอ, wait event `Lock`, pid ที่บล็อก) และ `pg_top_statements` ตัวอักษรใน SQL ถูกมาสก์ การเขียนถูกบล็อกจนกว่าจะกดอนุมัติ
+4. กด Approve ที่ขั้น Terminate the backend holding the row lock เอเจนต์เรียก `pg_terminate_backend` ด้วยบทบาท `sre_writer` ล็อกที่รอหาย และมีร่าง postmortem
+5. ถ้าต้องการรีเซ็ตเอง ใช้ `scripts/scenario4_reset.sh`
+6. คิวรีช้า: `scripts/scenario6_inject.sh` ลบ `orders_sku_created_idx` แล้ว alert `DBSlowQueries` ขออนุมัติ `CREATE INDEX CONCURRENTLY` ถ้าปฏิเสธ ให้รัน `scripts/scenario6_reset.sh` กรณีที่ 5 เปิดเซสชัน `sre-hold` จนเกิน 75% ของ `max_connections` ขั้นที่อนุมัติคือการตัดเซสชันเหล่านั้น
+
 ### การทดสอบ
 
 ```bash
 uv run pytest
 ```
 
-ครอบคลุมการจับคู่ runbook, การบล็อกการเขียนที่ยังไม่อนุมัติ, รูปแบบการ์ด Teams, ไคลเอนต์ GitLab กับ mock, การรีเซ็ต fail mode และกรณีที่ 1 แบบ end-to-end กับ mock LLM
+ครอบคลุมการจับคู่ runbook, การบล็อกการเขียนที่ยังไม่อนุมัติ (รวม `pg_terminate_backend`, `pg_cancel_query` และ `pg_create_index`), รูปแบบการ์ด Teams, ไคลเอนต์ GitLab กับ mock, การรีเซ็ต fail mode, กรณีที่ 1 และกรณีล็อกกับ mock LLM การมาสก์ SQL ทดสอบได้โดยไม่ต้องมีฐานข้อมูล ถ้ามี Docker ชุดทดสอบจะรันเครื่องมือกับ PostgreSQL 16 จริงด้วย
 
 ### แผนถัดไป
 

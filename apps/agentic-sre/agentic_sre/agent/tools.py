@@ -2,8 +2,22 @@ import json
 
 import httpx
 
-READ_TOOLS = {"promql_query", "logql_query", "traceql_query", "gitlab_read", "get_runbook"}
-WRITE_TOOLS = {"gitlab_open_revert_mr", "set_failmode"}
+READ_TOOLS = {
+    "promql_query",
+    "logql_query",
+    "traceql_query",
+    "gitlab_read",
+    "get_runbook",
+    "pg_activity",
+    "pg_top_statements",
+}
+WRITE_TOOLS = {
+    "gitlab_open_revert_mr",
+    "set_failmode",
+    "pg_terminate_backend",
+    "pg_cancel_query",
+    "pg_create_index",
+}
 
 TOOL_SCHEMAS = [
     {
@@ -66,6 +80,27 @@ TOOL_SCHEMAS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "pg_activity",
+            "description": "Read pg_stat_activity: active and waiting queries, blocking pids, and wait events.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "pg_top_statements",
+            "description": "Read pg_stat_statements ordered by total or mean execution time.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_by": {"type": "string", "enum": ["total_exec_time", "mean_exec_time"]},
+                },
+            },
+        },
+    },
 ]
 
 _http = httpx.Client(timeout=10.0, trust_env=False)
@@ -86,6 +121,10 @@ def run_read(runtime, name: str, arguments: dict) -> dict:
             return _gitlab_read(runtime, arguments.get("what", "deployments"))
         if name == "get_runbook":
             return _runbook(runtime, arguments.get("runbook_id", ""))
+        if name == "pg_activity":
+            return runtime.pg.activity()
+        if name == "pg_top_statements":
+            return runtime.pg.top_statements(arguments.get("order_by") or "total_exec_time")
     except Exception as exc:
         return {"kind": name, "query": json.dumps(arguments), "summary": f"tool failed: {exc}", "link": ""}
     return {"kind": name, "query": "", "summary": "tool returned nothing", "link": ""}
@@ -117,6 +156,21 @@ def run_write(runtime, step: dict, incident_id: str) -> dict:
             ),
         )
         return {"ok": True, "summary": f"opened MR !{mr['iid']}", "url": mr.get("web_url", "")}
+    if action == "pg_terminate_backend":
+        result = runtime.pg.terminate_backend(
+            pid=params.get("pid"),
+            application_name=params.get("application_name"),
+        )
+        return {"ok": True, "summary": result["summary"], "url": result.get("link", "")}
+    if action == "pg_cancel_query":
+        result = runtime.pg.cancel_query(
+            pid=params.get("pid"),
+            application_name=params.get("application_name"),
+        )
+        return {"ok": True, "summary": result["summary"], "url": result.get("link", "")}
+    if action == "pg_create_index":
+        result = runtime.pg.create_index(params.get("statement") or "")
+        return {"ok": True, "summary": result["summary"], "url": result.get("link", "")}
     raise ValueError(f"unsupported write {action}")
 
 

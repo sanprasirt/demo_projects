@@ -14,6 +14,13 @@ def test_execution_rail_blocks_unapproved_writes():
     assert not guard.check("drop_database", None).allowed
     assert guard.check("promql_query", None).allowed
     assert guard.check("logql_query", None).allowed
+    assert guard.check("pg_activity", None).allowed
+    assert guard.check("pg_top_statements", None).allowed
+    for name in ("pg_terminate_backend", "pg_cancel_query", "pg_create_index"):
+        assert not guard.check(name, None).allowed
+        assert "approval" in guard.check(name, None).reason
+        assert not guard.check(name, {"approved": True, "tool": "set_failmode"}).allowed
+        assert guard.check(name, {"approved": True, "tool": name}).allowed
     assert guard.check("set_failmode", {"approved": True, "tool": "set_failmode"}).allowed
 
 

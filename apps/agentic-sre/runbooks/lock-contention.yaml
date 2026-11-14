@@ -1,0 +1,31 @@
+id: lock-contention
+title: Release the Postgres row lock
+match:
+  alertnames:
+    - DBLockWaitsHigh
+    - DBDeadlocks
+  keywords:
+    - lock
+    - blocking
+    - waiting
+markdown: |
+  ## Row lock contention
+
+  A session named `sre-lock` is holding `products.sku = locked-sku` inside an open transaction. `pg_stat_activity` shows the waiter (`sre-lock-wait`), the `Lock` wait event, and `pg_blocking_pids`.
+
+  Terminating that backend is a write. It runs only after approval. Do not cancel the waiter and leave the holder in place.
+steps:
+  - id: terminate-blocker
+    title: Terminate the backend holding the row lock
+    action: pg_terminate_backend
+    approval_required: true
+    params:
+      application_name: sre-lock
+  - id: verify-locks
+    title: Confirm lock waits have cleared
+    action: verify
+    approval_required: false
+    params:
+      query: sum(demo_pg_activity_lock_waits)
+      below: 1
+      probe_service: checkout

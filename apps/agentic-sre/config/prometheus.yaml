@@ -30,3 +30,8 @@ scrape_configs:
           - gateway:8000
           - catalog:8000
           - checkout:8000
+  - job_name: postgres
+    scrape_interval: 5s
+    static_configs:
+      - targets:
+          - postgres-exporter:9187

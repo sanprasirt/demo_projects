@@ -6,4 +6,4 @@ curl -sf -X POST "${CHECKOUT_URL:-http://localhost:8003}/admin/failmode" \
   -H "x-admin-token: ${token}" \
   -d '{"mode":"latency","note":"scenario-3 orders-db latency"}'
 echo
-echo "scenario 3 injected: checkout orders-db calls sleep"
+echo "scenario 3 injected: checkout runs a heavy Postgres scan"

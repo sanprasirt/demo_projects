@@ -1,0 +1,182 @@
+# Stable series for the Day-2 alerts and the PostgreSQL dashboard.
+# Names are prefixed so they do not collide with the exporter's built-in collectors.
+
+demo_pg_connections:
+  query: |
+    SELECT
+      COALESCE(datname, 'none') AS datname,
+      COALESCE(state, 'background') AS state,
+      count(*)::float AS count
+    FROM pg_stat_activity
+    GROUP BY 1, 2
+  metrics:
+    - datname:
+        usage: "LABEL"
+        description: "Database name, or none for background processes"
+    - state:
+        usage: "LABEL"
+        description: "pg_stat_activity state"
+    - count:
+        usage: "GAUGE"
+        description: "Connections in this state"
+
+demo_pg_settings:
+  query: |
+    SELECT setting::float AS max_connections
+    FROM pg_settings
+    WHERE name = 'max_connections'
+  metrics:
+    - max_connections:
+        usage: "GAUGE"
+        description: "max_connections"
+
+demo_pg_locks:
+  query: |
+    SELECT
+      count(*)::float AS locks,
+      count(*) FILTER (WHERE NOT granted)::float AS waiting
+    FROM pg_locks
+    WHERE database IS NULL
+       OR database = (SELECT oid FROM pg_database WHERE datname = current_database())
+  metrics:
+    - locks:
+        usage: "GAUGE"
+        description: "Locks visible for this database"
+    - waiting:
+        usage: "GAUGE"
+        description: "Locks that are not granted"
+
+demo_pg_activity:
+  query: |
+    SELECT
+      count(*) FILTER (WHERE wait_event_type = 'Lock')::float AS lock_waits,
+      count(*) FILTER (WHERE state = 'active')::float AS active,
+      count(*) FILTER (
+        WHERE state = 'active'
+          AND query_start IS NOT NULL
+          AND now() - query_start > interval '1 second'
+      )::float AS long_running,
+      COALESCE(
+        max(EXTRACT(EPOCH FROM now() - query_start)) FILTER (
+          WHERE state = 'active' AND query_start IS NOT NULL
+        ),
+        0
+      )::float AS max_query_age_seconds
+    FROM pg_stat_activity
+    WHERE datname = current_database()
+      AND pid <> pg_backend_pid()
+  metrics:
+    - lock_waits:
+        usage: "GAUGE"
+        description: "Sessions waiting on a Lock event"
+    - active:
+        usage: "GAUGE"
+        description: "Active sessions on this database"
+    - long_running:
+        usage: "GAUGE"
+        description: "Active queries older than 1s"
+    - max_query_age_seconds:
+        usage: "GAUGE"
+        description: "Age of the oldest active query"
+
+demo_pg_database:
+  query: |
+    SELECT
+      deadlocks::float AS deadlocks,
+      xact_commit::float AS xact_commit,
+      xact_rollback::float AS xact_rollback,
+      blks_hit::float AS blks_hit,
+      blks_read::float AS blks_read,
+      tup_returned::float AS tup_returned,
+      tup_fetched::float AS tup_fetched,
+      tup_inserted::float AS tup_inserted,
+      tup_updated::float AS tup_updated,
+      tup_deleted::float AS tup_deleted
+    FROM pg_stat_database
+    WHERE datname = current_database()
+  metrics:
+    - deadlocks:
+        usage: "COUNTER"
+        description: "Deadlocks detected"
+    - xact_commit:
+        usage: "COUNTER"
+        description: "Transactions committed"
+    - xact_rollback:
+        usage: "COUNTER"
+        description: "Transactions rolled back"
+    - blks_hit:
+        usage: "COUNTER"
+        description: "Disk blocks found in cache"
+    - blks_read:
+        usage: "COUNTER"
+        description: "Disk blocks read from storage"
+    - tup_returned:
+        usage: "COUNTER"
+        description: "Rows returned by scans"
+    - tup_fetched:
+        usage: "COUNTER"
+        description: "Rows fetched"
+    - tup_inserted:
+        usage: "COUNTER"
+        description: "Rows inserted"
+    - tup_updated:
+        usage: "COUNTER"
+        description: "Rows updated"
+    - tup_deleted:
+        usage: "COUNTER"
+        description: "Rows deleted"
+
+demo_pg_statements:
+  query: |
+    SELECT
+      left(regexp_replace(query, E'[\\n\\r\\t]+', ' ', 'g'), 100) AS query,
+      calls::float AS calls,
+      (total_exec_time / 1000.0)::float AS total_seconds,
+      (mean_exec_time / 1000.0)::float AS mean_seconds,
+      rows::float AS rows
+    FROM pg_stat_statements
+    WHERE query NOT ILIKE '%pg_stat_statements%'
+      AND query NOT ILIKE '%pg_stat_activity%'
+    ORDER BY total_exec_time DESC
+    LIMIT 15
+  metrics:
+    - query:
+        usage: "LABEL"
+        description: "Normalized statement text"
+    - calls:
+        usage: "GAUGE"
+        description: "Calls recorded for this statement"
+    - total_seconds:
+        usage: "GAUGE"
+        description: "Total execution time in seconds"
+    - mean_seconds:
+        usage: "GAUGE"
+        description: "Mean execution time in seconds"
+    - rows:
+        usage: "GAUGE"
+        description: "Rows returned or affected"
+
+demo_pg_replication:
+  query: |
+    SELECT
+      COALESCE((SELECT max(EXTRACT(EPOCH FROM replay_lag)) FROM pg_stat_replication), 0)::float AS replay_lag_seconds,
+      COALESCE((SELECT max(EXTRACT(EPOCH FROM write_lag)) FROM pg_stat_replication), 0)::float AS write_lag_seconds,
+      COALESCE((SELECT max(EXTRACT(EPOCH FROM flush_lag)) FROM pg_stat_replication), 0)::float AS flush_lag_seconds,
+      (SELECT count(*) FROM pg_stat_replication)::float AS replicas,
+      (CASE WHEN pg_is_in_recovery() THEN 1 ELSE 0 END)::float AS in_recovery
+  metrics:
+    - replay_lag_seconds:
+        usage: "GAUGE"
+        description: "Replica replay lag; 0 when this primary has no replica"
+    - write_lag_seconds:
+        usage: "GAUGE"
+        description: "Replica write lag"
+    - flush_lag_seconds:
+        usage: "GAUGE"
+        description: "Replica flush lag"
+    - replicas:
+        usage: "GAUGE"
+        description: "Connected replicas"
+    - in_recovery:
+        usage: "GAUGE"
+        description: "1 when this server is in recovery"

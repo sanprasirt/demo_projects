@@ -33,3 +33,46 @@ groups:
         annotations:
           summary: Dependency latency is above 0.8s
           description: A shop dependency is slower than the runbook threshold.
+      - alert: DBConnectionsSaturated
+        expr: sum(demo_pg_connections_count) / max(demo_pg_settings_max_connections) > 0.75
+        for: 15s
+        labels:
+          severity: critical
+          scenario: connection-saturation
+          service: postgres
+        annotations:
+          summary: Postgres connections are above 75 percent of max_connections
+          description: Shop sessions plus sre-hold are saturating the server. Read pg_stat_activity before terminating a backend.
+      - alert: DBLockWaitsHigh
+        expr: sum(demo_pg_activity_lock_waits) > 0 or sum(demo_pg_locks_waiting) > 0
+        for: 15s
+        labels:
+          severity: warning
+          scenario: lock-contention
+          service: postgres
+        annotations:
+          summary: Postgres sessions are waiting on locks
+          description: pg_stat_activity shows lock waits. Identify the blocking pid before terminating it.
+      - alert: DBDeadlocks
+        expr: increase(demo_pg_database_deadlocks[5m]) > 0
+        for: 15s
+        labels:
+          severity: warning
+          scenario: lock-contention
+          service: postgres
+        annotations:
+          summary: Postgres reported a deadlock
+          description: deadlocks increased. Inspect pg_stat_activity and the blocking pid.
+      - alert: DBSlowQueries
+        expr: |
+          max(demo_pg_statements_mean_seconds{query=~".*orders_by_sku.*"}) > 0.08
+          or
+          max(demo_db_last_query_seconds{statement="orders_by_sku"}) > 0.08
+        for: 15s
+        labels:
+          severity: warning
+          scenario: slow-query
+          service: postgres
+        annotations:
+          summary: orders_by_sku mean execution time is high
+          description: The orders sku statement is slow. pg_stat_statements and the checkout gauge should agree. The fix is CREATE INDEX CONCURRENTLY, after approval.

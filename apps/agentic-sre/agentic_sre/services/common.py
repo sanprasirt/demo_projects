@@ -31,6 +31,12 @@ def make_metrics(registry: CollectorRegistry) -> dict:
             ["service"],
             registry=registry,
         ),
+        "db_last": Gauge(
+            "demo_db_last_query_seconds",
+            "Last measured database statement duration",
+            ["service", "statement"],
+            registry=registry,
+        ),
     }
 
 
@@ -43,6 +49,8 @@ def build_app(
     loki_url: str | None,
     slow_s: float,
     base_s: float,
+    database_url: str | None = None,
+    application_name: str | None = None,
 ) -> FastAPI:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     faults = FailState()
@@ -55,10 +63,11 @@ def build_app(
     app.state.service_name = service_name
     app.state.slow_s = slow_s
     app.state.base_s = base_s
+    app.state.db = None
 
     @app.get("/health")
     def health():
-        return {"ok": True, "service": service_name, "failmode": faults.snapshot()}
+        return {"ok": True, "service": service_name, "failmode": faults.snapshot(), "db": app.state.db is not None}
 
     @app.get("/admin/failmode")
     def get_mode():
@@ -101,6 +110,18 @@ def build_app(
 
         FastAPIInstrumentor.instrument_app(app)
         HTTPXClientInstrumentor().instrument()
+    if database_url:
+        from agentic_sre.db import Database
+
+        app.state.db = Database(database_url, application_name=application_name or service_name)
+
+    @app.on_event("shutdown")
+    def close_db():
+        database = getattr(app.state, "db", None)
+        if database is not None:
+            database.close()
+            app.state.db = None
+
     return app
 
 

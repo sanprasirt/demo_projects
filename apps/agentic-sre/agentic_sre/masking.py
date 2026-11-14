@@ -27,6 +27,15 @@ def mask_sensitive(text: str) -> str:
     return masked
 
 
+def mask_sql_literals(sql: str) -> str:
+    """Replace string and numeric SQL literals so a statement can go to the model."""
+    if not sql:
+        return ""
+    without_strings = re.sub(r"'(?:''|[^'])*'", "?", sql)
+    # Leave $1-style placeholders in place. They are not literals.
+    return re.sub(r"(?<!\$)\b\d+(?:\.\d+)?\b", "?", without_strings)
+
+
 def denied_reason(text: str) -> str | None:
     lowered = (text or "").lower()
     for phrase in _DENY:

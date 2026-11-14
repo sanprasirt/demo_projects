@@ -92,11 +92,12 @@ def investigate(state: State) -> dict:
             "role": "user",
             "content": (
                 f"Alert: {state['alertname']}\n{state['alert_text']}\n"
-                "Investigate with the read-only tools. Stop when you have metrics, logs, traces, and GitLab context."
+                "Investigate with the read-only tools. For a database alert, call pg_activity and "
+                "pg_top_statements. Stop when you have metrics, logs, traces, and database or GitLab context."
             ),
         }
     ]
-    for _ in range(6):
+    for _ in range(8):
         result = runtime.llm.chat(phase="investigate", messages=messages, tools=TOOL_SCHEMAS)
         if not result["tool_calls"]:
             break

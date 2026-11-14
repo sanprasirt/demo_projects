@@ -12,6 +12,7 @@ from agentic_sre.agent.graph import build_graph
 from agentic_sre.agent.guardrails import Guardrails
 from agentic_sre.agent.llm import LLM
 from agentic_sre.agent.obs import ObsClient
+from agentic_sre.agent.pg import PgClient
 from agentic_sre.agent.runbooks import RunbookLibrary
 from agentic_sre.agent.store import IncidentStore
 from agentic_sre.agent.teams import TeamsClient
@@ -38,6 +39,7 @@ class Runtime:
             project_path=settings.gitlab_project_path,
         )
         self.teams = TeamsClient(settings.teams_webhook_url)
+        self.pg = PgClient(settings.pg_read_dsn, settings.pg_write_dsn, settings.grafana_public_url)
         self.runbooks = RunbookLibrary(settings.runbooks_dir)
         self.guard = Guardrails(
             base_url=settings.llm_base_url,

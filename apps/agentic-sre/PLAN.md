@@ -55,3 +55,23 @@ Out:
 - Grafana MCP instead of hand-written PromQL, LogQL, and TraceQL clients.
 - The OpenTelemetry Demo as the target system.
 - A git hook. `uv run pytest` is one command.
+
+## PostgreSQL monitoring
+
+### Goal
+
+Catalog and checkout talk to a real PostgreSQL 16. The agent can see locks, connection pressure, and slow statements, and it still waits for a person before it terminates a backend or builds an index.
+
+### In
+
+- Shop database, separate from GitLab CE, with `pg_stat_statements`, `track_io_timing`, seed data, and psycopg 3 pools.
+- postgres_exporter scraped by Prometheus, plus alerts for saturation, lock waits, deadlocks, and slow statements. The original Day-2 alerts stay.
+- A provisioned PostgreSQL Grafana dashboard linked from the Day-2 dashboard, and OpenTelemetry database spans on the service traces.
+- Read tools `pg_activity` and `pg_top_statements` on a `pg_monitor` role. `pg_terminate_backend`, `pg_cancel_query`, and `pg_create_index` are writes. SQL literals are masked before the model sees them.
+- Scenario 3 is a real Postgres scan. Added scenarios: row-lock contention, connection saturation, and a missing index whose runbook proposes `CREATE INDEX CONCURRENTLY`. The mock LLM can run them.
+
+### Out
+
+- A replica. Replication-lag series are exported and stay at zero on this primary.
+- Using or changing GitLab CE's embedded database.
+- Killing sessions or creating indexes without an approval record.

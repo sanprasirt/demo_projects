@@ -36,6 +36,9 @@ class Settings:
     runbooks_dir: str
     nemo_dir: str
     enable_nemo: bool
+    database_url: str = ""
+    pg_read_dsn: str = ""
+    pg_write_dsn: str = ""
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -65,6 +68,9 @@ class Settings:
             runbooks_dir=_env("RUNBOOKS_DIR", str(RUNBOOKS)),
             nemo_dir=_env("NEMO_DIR", str(NEMO)),
             enable_nemo=_env("ENABLE_NEMO", "1") not in {"0", "false", "False"},
+            database_url=_env("DATABASE_URL", ""),
+            pg_read_dsn=_env("PG_READ_DSN", ""),
+            pg_write_dsn=_env("PG_WRITE_DSN", ""),
         )
 
     @property
