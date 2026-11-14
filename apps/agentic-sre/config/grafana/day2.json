@@ -6,6 +6,16 @@
   "schemaVersion": 39,
   "refresh": "5s",
   "time": {"from": "now-15m", "to": "now"},
+  "links": [
+    {
+      "title": "PostgreSQL",
+      "url": "/d/postgres/postgresql",
+      "type": "link",
+      "icon": "dashboard",
+      "keepTime": true,
+      "targetBlank": false
+    }
+  ],
   "panels": [
     {
       "id": 1,
@@ -64,6 +74,74 @@
           "refId": "A",
           "expr": "sum by (service, dependency) (rate(demo_dependency_latency_seconds_sum[1m])) / sum by (service, dependency) (rate(demo_dependency_latency_seconds_count[1m]))",
           "legendFormat": "{{service}} {{dependency}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "text",
+      "title": "Database",
+      "gridPos": {"h": 3, "w": 24, "x": 0, "y": 16},
+      "options": {
+        "mode": "markdown",
+        "content": "Catalog and checkout use PostgreSQL 16. Open the [PostgreSQL dashboard](/d/postgres/postgresql) for connections, locks, cache hit ratio, tuples, and statement time."
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Postgres connections",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 19},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "links": [{"title": "PostgreSQL dashboard", "url": "/d/postgres/postgresql", "keepTime": true}],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (state) (demo_pg_connections_count{datname=\"shop\"})",
+          "legendFormat": "{{state}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Postgres lock waits",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 19},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "short"}},
+      "links": [{"title": "PostgreSQL dashboard", "url": "/d/postgres/postgresql", "keepTime": true}],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(demo_pg_activity_lock_waits)",
+          "legendFormat": "lock waits"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(demo_pg_locks_waiting)",
+          "legendFormat": "locks not granted"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "orders_by_sku time",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 19},
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": {"defaults": {"unit": "s"}},
+      "links": [{"title": "PostgreSQL dashboard", "url": "/d/postgres/postgresql", "keepTime": true}],
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(demo_db_last_query_seconds{statement=\"orders_by_sku\"})",
+          "legendFormat": "last orders_by_sku"
+        },
+        {
+          "refId": "B",
+          "expr": "max(demo_pg_statements_mean_seconds{query=~\".*orders_by_sku.*\"})",
+          "legendFormat": "pg_stat_statements mean"
         }
       ]
     }

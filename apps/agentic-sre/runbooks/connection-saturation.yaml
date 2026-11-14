@@ -1,0 +1,30 @@
+id: connection-saturation
+title: Free saturated Postgres connections
+match:
+  alertnames:
+    - DBConnectionsSaturated
+  keywords:
+    - connection
+    - saturated
+    - pool
+markdown: |
+  ## Connection saturation
+
+  Client sessions are above 75% of `max_connections`. The checkout pool (max 4) is also checked out, so new orders fail while `/health` still answers.
+
+  The extra sessions use `application_name = sre-hold`. Terminating them is a write and releases the pool. Confirm `pg_stat_activity` before approving.
+steps:
+  - id: terminate-holders
+    title: Terminate the sre-hold backends
+    action: pg_terminate_backend
+    approval_required: true
+    params:
+      application_name: sre-hold
+  - id: verify-connections
+    title: Confirm connections fell under 75 percent
+    action: verify
+    approval_required: false
+    params:
+      query: sum(demo_pg_connections_count) / max(demo_pg_settings_max_connections)
+      below: 0.75
+      probe_service: checkout

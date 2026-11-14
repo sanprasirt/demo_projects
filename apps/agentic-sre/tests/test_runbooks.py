@@ -20,3 +20,21 @@ def test_matches_each_scenario():
     latency = library.match(alertname="DependencyLatencyHigh", text="orders-db")
     assert latency.id == "dependency-latency"
     assert library.match(alertname="UnknownAlert", text="nothing to see") is None
+
+
+def test_db_runbooks_gate_writes():
+    library = RunbookLibrary(RUNBOOKS)
+    lock = library.match(alertname="DBLockWaitsHigh", text="blocking")
+    assert lock is not None
+    assert lock.id == "lock-contention"
+    assert lock.steps[0]["action"] == "pg_terminate_backend"
+    assert lock.steps[0]["approval_required"] is True
+    assert library.match(alertname="DBDeadlocks", text="deadlock").id == "lock-contention"
+    slow = library.match(alertname="DBSlowQueries", text="orders_by_sku")
+    assert slow.id == "slow-query"
+    assert slow.steps[0]["action"] == "pg_create_index"
+    assert slow.steps[0]["approval_required"] is True
+    assert "CONCURRENTLY" in slow.steps[0]["params"]["statement"]
+    saturated = library.match(alertname="DBConnectionsSaturated", text="pool")
+    assert saturated.id == "connection-saturation"
+    assert saturated.steps[0]["approval_required"] is True

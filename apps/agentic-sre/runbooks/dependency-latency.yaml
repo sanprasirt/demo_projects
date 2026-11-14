@@ -6,11 +6,11 @@ match:
   keywords:
     - latency
     - orders-db
-    - slow
+    - scan
 markdown: |
   ## Checkout dependency latency
 
-  The orders-db call inside checkout is slower than 0.8s. Confirm the latency query and the slow log line. Turn latency mode off after approval, then verify the average falls.
+  The orders-db statement inside checkout is slower than 0.8s. Latency mode runs a heavy Postgres scan (not a process sleep). Confirm the latency query and the slow log line. Turn latency mode off after approval, then verify the average falls.
 steps:
   - id: clear-latency
     title: Turn checkout latency mode off

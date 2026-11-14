@@ -3,6 +3,7 @@
 # GitLab CE (about 4GB RAM):   docker compose --profile gitlab up -d gitlab
 # vLLM on a GPU:               set LLM_BASE_URL=http://vllm:8000/v1 and --profile gpu
 # Do not bind mock-llm and vllm, or mock-gitlab and gitlab, to the same host port.
+# Shop Postgres (service postgres, host port 5432) is not GitLab's database.
 
 services:
   lgtm:
@@ -24,6 +25,7 @@ services:
       - ./config/alerts.yml:/otel-lgtm/alerts.yml:ro
       - ./config/grafana/dashboards.yaml:/otel-lgtm/grafana/conf/provisioning/dashboards/day2.yaml:ro
       - ./config/grafana/day2.json:/otel-lgtm/grafana/conf/provisioning/dashboards/custom/day2.json:ro
+      - ./config/grafana/postgres.json:/otel-lgtm/grafana/conf/provisioning/dashboards/custom/postgres.json:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/127.0.0.1/3000'"]
       interval: 5s
@@ -38,6 +40,49 @@ services:
     volumes:
       - ./config/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command: ["--config.file=/etc/alertmanager/alertmanager.yml"]
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: shop
+    command:
+      - postgres
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      - -c
+      - pg_stat_statements.track=all
+      - -c
+      - pg_stat_statements.max=5000
+      - -c
+      - track_io_timing=on
+      - -c
+      - max_connections=80
+    ports:
+      - "5432:5432"
+    volumes:
+      - shop-pg:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shop"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 15s
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.16.0
+    environment:
+      DATA_SOURCE_NAME: postgresql://exporter:exporter@postgres:5432/shop?sslmode=disable
+      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres_exporter/queries.yaml
+    volumes:
+      - ./config/postgres-exporter-queries.yaml:/etc/postgres_exporter/queries.yaml:ro
+    ports:
+      - "9187:9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   gateway:
     build: .
@@ -65,8 +110,12 @@ services:
     environment:
       <<: *shop
       OTEL_SERVICE_NAME: catalog
+      DATABASE_URL: postgresql://shop_app:shop_app@postgres:5432/shop
     ports:
       - "8002:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   checkout:
     build: .
@@ -74,8 +123,12 @@ services:
     environment:
       <<: *shop
       OTEL_SERVICE_NAME: checkout
+      DATABASE_URL: postgresql://shop_app:shop_app@postgres:5432/shop
     ports:
       - "8003:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   loadgen:
     build: .
@@ -145,9 +198,11 @@ services:
       GATEWAY_ADMIN_URL: http://gateway:8000/admin/failmode
       CATALOG_PROBE_URL: http://catalog:8000/products
       CHECKOUT_PROBE_URL: http://checkout:8000/health
+      PG_READ_DSN: postgresql://sre_ro:sre_ro@postgres:5432/shop
+      PG_WRITE_DSN: postgresql://sre_writer:sre_writer@postgres:5432/shop
       ENABLE_NEMO: ${ENABLE_NEMO:-1}
-      NO_PROXY: localhost,127.0.0.1,mock-llm,mock-gitlab,mock-teams,lgtm,catalog,gateway,checkout,alertmanager,agent
-      no_proxy: localhost,127.0.0.1,mock-llm,mock-gitlab,mock-teams,lgtm,catalog,gateway,checkout,alertmanager,agent
+      NO_PROXY: localhost,127.0.0.1,mock-llm,mock-gitlab,mock-teams,lgtm,catalog,gateway,checkout,alertmanager,agent,postgres,postgres-exporter
+      no_proxy: localhost,127.0.0.1,mock-llm,mock-gitlab,mock-teams,lgtm,catalog,gateway,checkout,alertmanager,agent,postgres,postgres-exporter
     depends_on:
       lgtm:
         condition: service_healthy
@@ -155,6 +210,8 @@ services:
         condition: service_started
       mock-teams:
         condition: service_started
+      postgres:
+        condition: service_healthy
 
   gitlab:
     profiles: ["gitlab"]
@@ -197,3 +254,6 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+volumes:
+  shop-pg:

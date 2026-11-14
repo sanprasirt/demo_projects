@@ -36,8 +36,12 @@ def setup_telemetry(service_name: str, loki_url: str | None = None) -> None:
         from opentelemetry.sdk.trace import TracerProvider
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
+        from opentelemetry.sdk.trace import SpanProcessor
+
         resource = Resource.create({"service.name": service_name})
         provider = TracerProvider(resource=resource)
+        sanitizer = type("_BoundSanitize", (_SanitizeDbStatements, SpanProcessor), {})()
+        provider.add_span_processor(sanitizer)
         if endpoint:
             from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
@@ -48,11 +52,43 @@ def setup_telemetry(service_name: str, loki_url: str | None = None) -> None:
         from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
         LoggingInstrumentor().instrument(set_logging_format=False)
+        _instrument_psycopg()
     except Exception:
         log.exception("otel setup failed")
     if loki_url:
         root = logging.getLogger()
         root.addHandler(LokiHandler(loki_url, service_name))
+
+
+class _SanitizeDbStatements:
+    """Mask SQL literals on db spans before they are exported.
+
+    Subclassed from the SDK processor once telemetry starts, so `_on_ending`
+    matches the current OpenTelemetry span processor interface.
+    """
+
+    def _on_ending(self, span) -> None:
+        from agentic_sre.masking import mask_sql_literals
+
+        attrs = getattr(span, "_attributes", None)
+        if not isinstance(attrs, dict):
+            return
+        for key in ("db.statement", "db.query.text"):
+            value = attrs.get(key)
+            if isinstance(value, str):
+                attrs[key] = mask_sql_literals(value)
+        if "db.system" not in attrs and isinstance(attrs.get("db.system.name"), str):
+            attrs["db.system"] = attrs["db.system.name"]
+
+
+def _instrument_psycopg() -> None:
+    """DB spans carry db.system and a statement. Literals are masked on export."""
+    try:
+        from opentelemetry.instrumentation.psycopg import PsycopgInstrumentor
+
+        PsycopgInstrumentor().instrument(capture_parameters=False)
+    except Exception:
+        log.exception("psycopg instrumentation failed")
 
 
 def _setup_logs(resource) -> None:

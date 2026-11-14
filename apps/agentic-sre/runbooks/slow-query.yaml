@@ -1,0 +1,30 @@
+id: slow-query
+title: Restore the orders sku index
+match:
+  alertnames:
+    - DBSlowQueries
+  keywords:
+    - orders_by_sku
+    - index
+    - sequential
+markdown: |
+  ## Missing index on orders
+
+  Checkout counts recent demand with `orders_by_sku`. While `orders_sku_created_idx` exists, that is an index read. The inject drops the index, and the statement seq-scans `orders` and hashes each note.
+
+  The approved step is `CREATE INDEX CONCURRENTLY` on `(sku, created_at DESC)`. It also resets `pg_stat_statements` so the mean is the post-fix plan. Building the index is a write.
+steps:
+  - id: create-index
+    title: Create the orders sku index concurrently
+    action: pg_create_index
+    approval_required: true
+    params:
+      statement: CREATE INDEX CONCURRENTLY IF NOT EXISTS orders_sku_created_idx ON orders (sku, created_at DESC)
+  - id: verify-statement
+    title: Confirm orders_by_sku is fast again
+    action: verify
+    approval_required: false
+    params:
+      query: max(demo_db_last_query_seconds{statement="orders_by_sku"})
+      below: 0.2
+      probe_service: checkout

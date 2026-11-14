@@ -62,6 +62,9 @@ function linkList(items) {
     title.append(text("span", item.id || "", "id"), text("span", item.kind || ""));
     card.append(title, text("p", item.summary || ""));
     if (item.query) card.append(text("pre", item.query));
+    if (item.blocking_pids && item.blocking_pids.length) {
+      card.append(text("p", "blocking pids " + item.blocking_pids.join(", ")));
+    }
     if (item.trace_id) card.append(text("p", "trace_id=" + item.trace_id));
     if (item.commit_sha) card.append(text("p", "sha=" + item.commit_sha));
     if (item.link) {
@@ -100,6 +103,14 @@ function renderDetail() {
       text("p", `${incident.pending_step.title} · ${incident.pending_step.action}`),
       text("p", "The execution rail already blocked this write. It runs only after an approval record."),
     );
+    const pg = (incident.evidence || []).filter((item) => String(item.kind || "").startsWith("pg"));
+    if (pg.length) {
+      panel.append(text("h3", "Postgres evidence"));
+      for (const item of pg) {
+        const line = `${item.id} ${item.kind}: ${item.summary || ""}`;
+        panel.append(text("p", line));
+      }
+    }
     const actions = document.createElement("div");
     actions.className = "actions";
     const approve = document.createElement("button");

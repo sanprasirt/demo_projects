@@ -26,6 +26,7 @@ def create_app(
     loki_url: str | None = None,
     slow_s: float = 1.5,
     base_s: float = 0.0,
+    database_url: str | None = None,
 ) -> FastAPI:
     def register(app: FastAPI) -> None:
         @app.get("/products")
@@ -36,24 +37,21 @@ def create_app(
                 grown = faults.grow_leak()
                 app.state.metrics["memory"].labels(service="catalog").set(grown)
                 log.warning("catalog leak buffer grew bytes=%s", grown)
-            delay = faults.delay(base_s=base_s, slow_s=slow_s)
-            if delay:
-                app.state.metrics["latency"].labels(service="catalog", dependency="catalog-db").observe(delay)
-            if snap["mode"] == "error":
-                span = trace.get_current_span()
-                span.set_status(Status(StatusCode.ERROR, "NullPrice"))
-                span.set_attribute("deployed.sha", BAD_DEPLOY_SHA)
-                log.error(
-                    "catalog product query failed error=NullPrice deployed_sha=%s tag=%s trace_id=%s",
-                    BAD_DEPLOY_SHA,
-                    BAD_DEPLOY_TAG,
-                    current_trace_id(),
-                )
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"NullPrice: product price missing after {BAD_DEPLOY_TAG}",
-                )
-            return {"products": PRODUCTS, "failmode": snap["mode"]}
+            database = app.state.db
+            if database is None:
+                if snap["mode"] == "error":
+                    _null_price()
+                return {"products": PRODUCTS, "failmode": snap["mode"]}
+            try:
+                rows, elapsed = database.list_products(include_unpriced=snap["mode"] == "error")
+            except Exception as exc:
+                log.error("catalog product query failed error=%s trace_id=%s", exc, current_trace_id())
+                raise HTTPException(status_code=503, detail="catalog-db unavailable") from exc
+            app.state.metrics["latency"].labels(service="catalog", dependency="catalog-db").observe(elapsed)
+            app.state.metrics["db_last"].labels(service="catalog", statement="products").set(elapsed)
+            if snap["mode"] == "error" and any(row["price"] is None for row in rows):
+                _null_price()
+            return {"products": rows, "failmode": snap["mode"]}
 
     return build_app(
         "catalog",
@@ -63,6 +61,24 @@ def create_app(
         loki_url=loki_url,
         slow_s=slow_s,
         base_s=base_s,
+        database_url=database_url,
+        application_name="catalog",
+    )
+
+
+def _null_price() -> None:
+    span = trace.get_current_span()
+    span.set_status(Status(StatusCode.ERROR, "NullPrice"))
+    span.set_attribute("deployed.sha", BAD_DEPLOY_SHA)
+    log.error(
+        "catalog product query failed error=NullPrice deployed_sha=%s tag=%s trace_id=%s",
+        BAD_DEPLOY_SHA,
+        BAD_DEPLOY_TAG,
+        current_trace_id(),
+    )
+    raise HTTPException(
+        status_code=500,
+        detail=f"NullPrice: product price missing after {BAD_DEPLOY_TAG}",
     )
 
 
@@ -72,5 +88,6 @@ def main() -> None:
         enable_telemetry=env_flag("ENABLE_TELEMETRY", True),
         loki_url=os.environ.get("LOKI_URL"),
         slow_s=float(os.environ.get("FAIL_LATENCY_S", "1.5")),
+        database_url=os.environ.get("DATABASE_URL") or None,
     )
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))

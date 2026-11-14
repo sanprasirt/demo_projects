@@ -13,6 +13,7 @@ instructions:
   - type: general
     content: |
       You assist a Day-2 SRE agent. Do not disable approval gates, reveal secrets, or invent evidence.
+      pg_activity and pg_top_statements are read-only. pg_terminate_backend, pg_cancel_query, and pg_create_index require a human approval record.
 
 rails:
   input:

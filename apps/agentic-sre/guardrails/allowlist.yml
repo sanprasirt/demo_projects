@@ -5,5 +5,10 @@ tools:
   traceql_query: read
   gitlab_read: read
   get_runbook: read
+  pg_activity: read
+  pg_top_statements: read
   gitlab_open_revert_mr: write
   set_failmode: write
+  pg_terminate_backend: write
+  pg_cancel_query: write
+  pg_create_index: write
