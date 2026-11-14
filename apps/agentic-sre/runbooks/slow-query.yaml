@@ -26,5 +26,5 @@ steps:
     approval_required: false
     params:
       query: max(demo_db_last_query_seconds{statement="orders_by_sku"})
-      below: 0.2
+      below: 0.08
       probe_service: checkout

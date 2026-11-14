@@ -129,7 +129,7 @@ demo_pg_database:
 demo_pg_statements:
   query: |
     SELECT
-      left(regexp_replace(query, E'[\\n\\r\\t]+', ' ', 'g'), 100) AS query,
+      left(regexp_replace(regexp_replace(query, E'[\\n\\r\\t]+', ' ', 'g'), $$'[^']*'$$, '?', 'g'), 100) AS query,
       calls::float AS calls,
       (total_exec_time / 1000.0)::float AS total_seconds,
       (mean_exec_time / 1000.0)::float AS mean_seconds,

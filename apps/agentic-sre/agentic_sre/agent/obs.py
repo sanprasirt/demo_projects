@@ -75,12 +75,32 @@ class ObsClient:
         first = traces[0]
         trace_id = first.get("traceID") or first.get("traceId") or ""
         name = first.get("rootTraceName") or first.get("rootServiceName") or "trace"
+        matched = _matched_error(first)
+        if matched:
+            name = f"{name} matched {matched}"
         return {
             "summary": f"{name} trace_id={trace_id}",
             "trace_id": trace_id,
             "link": f"{self.grafana_url}/explore?schemaVersion=1&orgId=1&panes="
             + quote('{"q":{"datasource":"tempo","queries":[{"query":"%s","queryType":"traceql"}]}}' % query),
         }
+
+
+def _matched_error(trace: dict) -> str:
+    spans = []
+    span_set = trace.get("spanSet") or {}
+    spans.extend(span_set.get("spans") or [])
+    for extra in trace.get("spanSets") or []:
+        spans.extend((extra or {}).get("spans") or [])
+    for span in spans:
+        attrs = {}
+        for item in span.get("attributes") or []:
+            value = item.get("value") or {}
+            attrs[item.get("key")] = value.get("stringValue") or ""
+        service = attrs.get("service.name") or ""
+        if service and str(attrs.get("status", "")).lower() == "error":
+            return f"{service} status=error"
+    return ""
 
 
 def explore(grafana: str, datasource: str, expr: str) -> str:

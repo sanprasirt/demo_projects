@@ -240,7 +240,8 @@ def verify(state: State) -> dict:
     runtime.store.update(state["incident_id"], status="verifying")
     recovered = False
     summary = "verification did not run"
-    for attempt in range(8):
+    # A 30s rate needs more than one scrape to fall. Twelve tries is about a minute.
+    for attempt in range(12):
         try:
             found = runtime.obs.promql(params.get("query", ""))
             value = found.get("value")
@@ -256,7 +257,7 @@ def verify(state: State) -> dict:
             "verification",
             f"attempt {attempt + 1}: value={value} probe_ok={probe_ok} below={below}",
         )
-        if recovered or attempt == 7:
+        if recovered or attempt == 11:
             break
         time.sleep(5)
     evidence = runtime.store.add_evidence(

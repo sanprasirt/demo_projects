@@ -165,6 +165,17 @@ uv run pytest
 
 Covers runbook matching, the execution rail blocking unapproved writes (including `pg_terminate_backend`, `pg_cancel_query`, and `pg_create_index`), the Teams card shape, the GitLab client against the mock, fail-mode reset, a full scenario 1 run on the mock LLM, and the lock-contention scenario on the mock LLM. `pg_activity` masking is covered without a database. When Docker is available, the same file also runs the tools against a real PostgreSQL 16.
 
+### End-to-end scenarios
+
+`scripts/e2e_all.sh` drives the running mock stack. It does not start Docker. Bring the stack up, then run it from `apps/agentic-sre`:
+
+```bash
+docker compose --profile mock up --build
+scripts/e2e_all.sh
+```
+
+For each scenario the script resets leftover faults, runs the inject script, waits until Prometheus is firing and Alertmanager has created an incident, checks the runbook and the evidence (PromQL, LogQL, TraceQL, GitLab, and the Postgres tools when the alert is a database alert), checks that mock Teams received an Adaptive Card with an Approve link, approves every write, and waits until the incident is `resolved` and the alert has cleared. It prints a pass/fail table: scenario, alert, runbook, evidence, approval action, recovered, and seconds from inject to the approval gate (time to diagnosis). `scripts/e2e_all.sh 2 6` repeats a subset. Scenario 3 is the heavy orders-db scan. Scenario 6 is the separate missing-index seq scan, recovered with `CREATE INDEX CONCURRENTLY`. Scenario 4 is included as a regression check.
+
 ### Roadmap
 
 - A real Microsoft Bot Framework bot, so Approve / Reject are card actions instead of `Action.OpenUrl`.
@@ -265,6 +276,17 @@ uv run pytest
 ```
 
 ครอบคลุมการจับคู่ runbook, การบล็อกการเขียนที่ยังไม่อนุมัติ (รวม `pg_terminate_backend`, `pg_cancel_query` และ `pg_create_index`), รูปแบบการ์ด Teams, ไคลเอนต์ GitLab กับ mock, การรีเซ็ต fail mode, กรณีที่ 1 และกรณีล็อกกับ mock LLM การมาสก์ SQL ทดสอบได้โดยไม่ต้องมีฐานข้อมูล ถ้ามี Docker ชุดทดสอบจะรันเครื่องมือกับ PostgreSQL 16 จริงด้วย
+
+### ซ้อมครบทุกกรณี
+
+`scripts/e2e_all.sh` ขับสแต็ก mock ที่รันอยู่แล้ว ไม่ได้สตาร์ต Docker ให้ เปิดสแต็กก่อน แล้วรันจาก `apps/agentic-sre`:
+
+```bash
+docker compose --profile mock up --build
+scripts/e2e_all.sh
+```
+
+สคริปต์รีเซ็ต fault ค้าง รันสคริปต์ inject รอจน Prometheus ยิงและ Alertmanager สร้าง incident ตรวจ runbook กับหลักฐาน (PromQL, LogQL, TraceQL, GitLab และเครื่องมือ Postgres เมื่อเป็น alert ของฐานข้อมูล) ตรวจว่า Teams จำลองได้รับ Adaptive Card พร้อมลิงก์ Approve อนุมัติทุกการเขียน แล้วรอจน incident เป็น `resolved` และ alert ดับ มันพิมพ์ตารางผ่าน/ไม่ผ่าน: กรณี, alert, runbook, หลักฐาน, การอนุมัติ, กู้คืนแล้วหรือยัง, และวินาทีจากตอน inject ถึงประตูอนุมัติ `scripts/e2e_all.sh 2 6` รันเฉพาะบางกรณี กรณีที่ 3 คือสแกน orders-db ที่หนัก กรณีที่ 6 คือ seq scan เพราะดัชนีหาย ซึ่งกู้ด้วย `CREATE INDEX CONCURRENTLY` กรณีที่ 4 ถูกรวมเป็น regression check
 
 ### แผนถัดไป
 
